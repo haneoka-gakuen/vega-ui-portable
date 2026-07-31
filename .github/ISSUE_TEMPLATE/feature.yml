@@ -1,0 +1,17 @@
+name: Feature proposal
+description: Propose a portable story UI capability
+title: "[Proposal] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Accessibility and asset boundary
+    validations:
+      required: true

@@ -1,0 +1,14 @@
+packages:
+  - "."
+  - ".dependencies/vega"
+  - ".dependencies/vega/packages/protocol"
+  - ".dependencies/vega-plugin-richtext"
+
+linkWorkspacePackages: true
+autoInstallPeers: false
+strictPeerDependencies: true
+engineStrict: true
+nodeVersion: 20.19.0
+
+allowBuilds:
+  esbuild: true
