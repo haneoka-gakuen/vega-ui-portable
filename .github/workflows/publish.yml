@@ -65,6 +65,10 @@ jobs:
         working-directory: vega-ui-portable
         run: pnpm --filter @haneoka/vega build:core
 
+      - name: Build rich-text runtime
+        working-directory: vega-ui-portable
+        run: pnpm --filter @haneoka/vega-plugin-richtext build
+
       - name: Check package
         working-directory: vega-ui-portable
         run: pnpm check
