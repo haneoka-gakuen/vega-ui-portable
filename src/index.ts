@@ -124,7 +124,7 @@ export const VEGA_PORTABLE_UI_CSS = String.raw`
   width: 111.111111cqh;
   height: 18.518519cqh;
   overflow: hidden;
-  font-size: 3.333333cqh;
+  font-size: calc(3.333333cqh * var(--vega-text-size, 1) * var(--vega-dialogue-font-scale, 1));
   font-weight: 400;
   line-height: 1.2;
   white-space: pre-wrap;
@@ -148,7 +148,7 @@ export const VEGA_PORTABLE_UI_CSS = String.raw`
   width: 111.111111cqh;
   height: 18.518519cqh;
   align-items: center;
-  font-size: 3.703704cqh;
+  font-size: calc(3.703704cqh * var(--vega-text-size, 1) * var(--vega-dialogue-font-scale, 1));
   transform: translate(-50%, -50%);
 }
 [data-vega-theme="portable"] .vega-portable-dialogue[data-window="psych"] .vega-portable-speaker {
@@ -160,7 +160,7 @@ export const VEGA_PORTABLE_UI_CSS = String.raw`
 [data-vega-theme="portable"] .vega-portable-dialogue[data-window="psych"] .vega-portable-text {
   bottom: 5.555556cqh;
   left: calc(50% - 52.5cqh);
-  font-size: 3.703704cqh;
+  font-size: calc(3.703704cqh * var(--vega-text-size, 1) * var(--vega-dialogue-font-scale, 1));
 }
 [data-vega-theme="portable"] .vega-portable-choices {
   position: absolute;
@@ -375,14 +375,34 @@ export const vegaPortableUiPlugin = defineVegaPlugin({
   },
 });
 
-const mountPortableStoryUi = (
-  host: HTMLElement,
-  context: VegaUiSlotContext,
-): VegaDisposable => {
+const portableStyles = new WeakMap<Document, { element: HTMLStyleElement; references: number }>();
+function acquirePortableStyles(document: Document): () => void {
+  let entry = portableStyles.get(document);
+  if (!entry) {
+    const element = document.createElement("style");
+    element.dataset.vegaPortableStyles = "";
+    element.textContent = VEGA_PORTABLE_UI_CSS.replaceAll('[data-vega-theme="portable"]', "[data-vega-portable-ui]");
+    document.head.prepend(element);
+    entry = { element, references: 0 };
+    portableStyles.set(document, entry);
+  }
+  entry.references++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--entry.references === 0) {
+      entry.element.remove();
+      portableStyles.delete(document);
+    }
+  };
+}
+
+const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): VegaDisposable => {
   const document = host.ownerDocument;
-  const richText = createRichTextPresenter(
-    context.services(VEGA_RICH_TEXT_SERVICE),
-  );
+  const releaseStyles = acquirePortableStyles(document);
+  context.root.dataset.vegaPortableUi = "";
+  const richText = createRichTextPresenter(context.services(VEGA_RICH_TEXT_SERVICE));
   const root = node(document, "section", "vega-portable-ui");
   root.setAttribute("aria-live", "polite");
 
@@ -429,19 +449,17 @@ const mountPortableStoryUi = (
   let lastChat = "";
   const render = () => {
     const state = context.state;
-    dialogue.hidden = !state.talk.visible;
+    dialogue.hidden =
+      !state.talk.enabled || !state.talk.visible || (state.talk.presentation ?? "default") !== "default";
     dialogue.dataset.window = portableWindow(state.talk.window);
+    text.style.setProperty("--vega-dialogue-font-scale", String(state.talk.fontScale ?? 1));
     dialogue.style.transform = `translate(${finite(state.talk.shakeX)}px, ${finite(state.talk.shakeY)}px)`;
     speaker.hidden = !state.talk.speaker;
     setText(speaker, state.talk.speaker);
     setLanguage(speaker, state.talk.speakerLang);
     const format = state.talk.textFormat?.toLowerCase();
     const deferCompilation =
-      !state.talk.textComplete &&
-      (format === "latex" ||
-        format === "tex" ||
-        format === "typst" ||
-        format === "typ");
+      !state.talk.textComplete && (format === "latex" || format === "tex" || format === "typst" || format === "typ");
     richText.render(
       text,
       createAdvTextRenderValue(state.talk.displayedText, {
@@ -473,9 +491,7 @@ const mountPortableStoryUi = (
     loadingText.textContent = state.preload.total
       ? `Loading ${state.preload.done} / ${state.preload.total}`
       : "Loading";
-    loadingProgress.value = state.preload.total
-      ? Math.min(1, state.preload.done / state.preload.total)
-      : 0;
+    loadingProgress.value = state.preload.total ? Math.min(1, state.preload.done / state.preload.total) : 0;
     error.hidden = !state.error;
     setText(error, state.error);
 
@@ -494,6 +510,8 @@ const mountPortableStoryUi = (
     dispose() {
       stop();
       richText.dispose();
+      releaseStyles();
+      delete context.root.dataset.vegaPortableUi;
       dialogue.removeEventListener("click", advance);
       dialogue.removeEventListener("keydown", advanceByKey);
       root.remove();
@@ -551,18 +569,14 @@ const renderChat = (
   }
 };
 
-const animate = (
-  host: HTMLElement,
-  signal: AbortSignal,
-  render: () => void,
-): (() => void) => {
+const animate = (host: HTMLElement, signal: AbortSignal, render: () => void): (() => void) => {
   const view = host.ownerDocument.defaultView;
   let active = true;
   let handle = 0;
-  const request = view?.requestAnimationFrame?.bind(view) ??
+  const request =
+    view?.requestAnimationFrame?.bind(view) ??
     ((callback: FrameRequestCallback) => view?.setTimeout(() => callback(Date.now()), 16) ?? 0);
-  const cancel = view?.cancelAnimationFrame?.bind(view) ??
-    ((id: number) => view?.clearTimeout(id));
+  const cancel = view?.cancelAnimationFrame?.bind(view) ?? ((id: number) => view?.clearTimeout(id));
   const frame: FrameRequestCallback = () => {
     if (!active || signal.aborted) return;
     render();
@@ -602,63 +616,59 @@ interface RichTextPresenter {
 }
 
 const richTextSource = (value: unknown): string => {
-  if (
-    value &&
-    typeof value === "object" &&
-    "source" in value &&
-    typeof value.source === "string"
-  ) {
+  if (value && typeof value === "object" && "source" in value && typeof value.source === "string") {
     return value.source;
   }
   return typeof value === "string" ? value : value == null ? "" : String(value);
 };
 
 const richTextSignature = (value: unknown): string => {
-  if (
-    value &&
-    typeof value === "object" &&
-    "source" in value &&
-    typeof value.source === "string"
-  ) {
+  if (value && typeof value === "object" && "source" in value && typeof value.source === "string") {
     const source = value as {
       readonly displayMode?: unknown;
       readonly format?: unknown;
       readonly language?: unknown;
       readonly source: string;
     };
-    return JSON.stringify([
-      source.format,
-      source.source,
-      source.displayMode,
-      source.language,
-    ]);
+    return JSON.stringify([source.format, source.source, source.displayMode, source.language]);
   }
   return JSON.stringify(["adv", richTextSource(value)]);
 };
 
-const createRichTextPresenter = (
-  service: VegaRichTextService | undefined,
-): RichTextPresenter => {
+const createRichTextPresenter = (service: VegaRichTextService | undefined): RichTextPresenter => {
   const signatures = new WeakMap<HTMLElement, string>();
   const handles = new Map<HTMLElement, VegaRichTextHandle>();
+  const release = (element: HTMLElement): void => {
+    handles.get(element)?.dispose();
+    handles.delete(element);
+    signatures.delete(element);
+  };
   return {
     render(element, value) {
       const signature = richTextSignature(value);
       if (signatures.get(element) === signature) return;
-      signatures.set(element, signature);
-      handles.get(element)?.dispose();
-      handles.delete(element);
       element.classList.add("vega-portable-rich-text");
+      const handle = handles.get(element);
+      if (service && handle?.update) {
+        try {
+          handle.update(value, { defaultFormat: "adv" });
+          signatures.set(element, signature);
+          return;
+        } catch {
+          release(element);
+        }
+      } else {
+        release(element);
+      }
       if (!service) {
         element.removeAttribute("data-vega-rich-text-error");
         element.removeAttribute("data-vega-rich-text-format");
         element.textContent = richTextSource(value);
+        signatures.set(element, signature);
         return;
       }
-      handles.set(
-        element,
-        service.render(element, value, { defaultFormat: "adv" }),
-      );
+      handles.set(element, service.render(element, value, { defaultFormat: "adv" }));
+      signatures.set(element, signature);
     },
     dispose() {
       for (const handle of handles.values()) handle.dispose();
@@ -672,8 +682,7 @@ const setLanguage = (element: HTMLElement, value: unknown): void => {
   if (element.lang !== next) element.lang = next;
 };
 
-const finite = (value: unknown): number =>
-  typeof value === "number" && Number.isFinite(value) ? value : 0;
+const finite = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 
 const portableWindow = (value: string): "default" | "center" | "psych" => {
   const normalized = value.toLowerCase();
@@ -695,7 +704,9 @@ const choiceKey = (items: readonly AdvChoiceItem[], visible: boolean): string =>
 const chatKey = (state: AdvPlayerState): string =>
   state.chat.visible
     ? `${state.chat.title}\u0000${state.chat.messages
-        .map(({ id, speaker, text, stamp, self }) =>
-          `${id}\u0000${speaker ?? ""}\u0000${text}\u0000${stamp ?? ""}\u0000${Boolean(self)}`)
+        .map(
+          ({ id, speaker, text, stamp, self }) =>
+            `${id}\u0000${speaker ?? ""}\u0000${text}\u0000${stamp ?? ""}\u0000${Boolean(self)}`,
+        )
         .join("\u0001")}`
     : "";
