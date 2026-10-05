@@ -6,6 +6,7 @@ import {
 } from "@haneoka/vega/plugin";
 import {
   VEGA_RICH_TEXT_SERVICE,
+  bindWebTextSelection,
   type VegaRichTextHandle,
   type VegaRichTextService,
 } from "@haneoka/vega-plugin-richtext";
@@ -433,12 +434,18 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
   root.append(dialogue, choices, title, location, subtitles, loading, error, chat);
   host.append(root);
 
+  const textSelection = bindWebTextSelection(root, {
+    textSelector: ".vega-portable-rich-text",
+    enabled: () => context.root.dataset.vegaWebText === "true",
+    revision: () => `${context.state.commandIndex}:${context.player.seekRevision}`,
+    signal: context.signal,
+  });
   const advance = (event: Event) => {
     event.stopPropagation();
-    context.player.requestNext();
+    textSelection.requestAdvance(event, () => context.player.requestNext());
   };
   const advanceByKey = (event: KeyboardEvent) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
+    if (event.target !== dialogue || event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     advance(event);
   };
@@ -512,6 +519,7 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
       richText.dispose();
       releaseStyles();
       delete context.root.dataset.vegaPortableUi;
+      textSelection.dispose();
       dialogue.removeEventListener("click", advance);
       dialogue.removeEventListener("keydown", advanceByKey);
       root.remove();
