@@ -1,9 +1,5 @@
-import {
-  createAdvTextRenderValue,
-  defineVegaPlugin,
-  type VegaDisposable,
-  type VegaUiSlotContext,
-} from "@haneoka/vega/plugin";
+import type { VegaWebUiSlotContext as VegaUiSlotContext } from "@haneoka/vega/web/ui";
+import { createAdvTextRenderValue, defineVegaPlugin, type VegaDisposable } from "@haneoka/vega/plugin";
 import {
   VEGA_RICH_TEXT_SERVICE,
   bindWebTextSelection,
@@ -370,6 +366,7 @@ export const vegaPortableUiPlugin = defineVegaPlugin({
     context.contribute("ui-slot", {
       id: "portable-story-ui",
       name: "Portable story UI",
+      hostKind: "web",
       slot: "dialogue",
       mount: mountPortableStoryUi,
     });
@@ -442,7 +439,7 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
   });
   const advance = (event: Event) => {
     event.stopPropagation();
-    textSelection.requestAdvance(event, () => context.player.requestNext());
+    textSelection.requestAdvance(event, () => context.actions.dispatch({ type: "advance" }));
   };
   const advanceByKey = (event: KeyboardEvent) => {
     if (event.target !== dialogue || event.key !== "Enter" && event.key !== " ") return;
@@ -544,7 +541,7 @@ const renderChoices = (
     if (!button.disabled) {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        context.player.choose(item.key);
+        context.actions.dispatch({ type: "choose", key: item.key });
       });
     }
     host.append(button);

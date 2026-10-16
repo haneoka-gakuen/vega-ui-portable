@@ -98,6 +98,7 @@ const commonRestrictedPath =
   /(?:^|\/)(?:character-models?|game-assets?|models?|sdk|vendor)(?:\/|$)|\.(?:moc|moc3|model3\.json|motion3\.json|physics3\.json|cdi3\.json|exp3\.json|skel|atlas|wasm|dll|dylib|so|node)$/iu;
 const mediaPath =
   /(?:^|\/)(?:assets?|textures?|motions?|physics|runtime|core)(?:\/|$)|\.(?:avif|bmp|gif|jpe?g|png|svg|webp|mp3|ogg|wav|m4a|mp4|webm)$/iu;
+const brandDocumentationPath = /^docs\/brand\/[^/]+\.(?:png|svg)$/iu;
 const ignoredRoots = new Set([".dependencies", ".git", "coverage", "dist", "node_modules"]);
 const repositoryFiles = [];
 
@@ -125,7 +126,7 @@ const walkRepository = async (path, relativePath = "") => {
 
 await walkRepository(root);
 const restrictedRepositoryFiles = repositoryFiles.filter(
-  (path) => commonRestrictedPath.test(path) || (policy.forbidMedia && mediaPath.test(path)),
+  (path) => commonRestrictedPath.test(path) || (policy.forbidMedia && mediaPath.test(path) && !brandDocumentationPath.test(path)),
 );
 if (restrictedRepositoryFiles.length > 0) {
   fail(`restricted SDK, runtime, model, or asset payload:\n${restrictedRepositoryFiles.join("\n")}`);
