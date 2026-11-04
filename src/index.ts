@@ -1,3 +1,4 @@
+import { createTalkPortrait } from "@haneoka/vega/web/ui";
 import type { VegaWebUiSlotContext as VegaUiSlotContext } from "@haneoka/vega/web/ui";
 import { createAdvTextRenderValue, defineVegaPlugin, type VegaDisposable } from "@haneoka/vega/plugin";
 import {
@@ -412,6 +413,7 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
   const text = node(document, "div", "vega-portable-text vega-dialogue__text");
   dialogue.append(speaker, text);
 
+  const portrait = createTalkPortrait(root, context);
   const choices = node(document, "div", "vega-portable-choices vega-choice-list");
   const title = node(document, "div", "vega-portable-title");
   const location = node(document, "div", "vega-portable-location");
@@ -442,7 +444,7 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
     textSelection.requestAdvance(event, () => context.actions.dispatch({ type: "advance" }));
   };
   const advanceByKey = (event: KeyboardEvent) => {
-    if (event.target !== dialogue || event.key !== "Enter" && event.key !== " ") return;
+    if (event.target !== dialogue || (event.key !== "Enter" && event.key !== " ")) return;
     event.preventDefault();
     advance(event);
   };
@@ -453,8 +455,21 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
   let lastChat = "";
   const render = () => {
     const state = context.state;
+    const language =
+      context.root.lang || document.documentElement.lang || document.defaultView?.navigator.language || "en";
+    const labels = /^ja/iu.test(language)
+      ? ["会話を進める", "読み込み中", "メッセージ"]
+      : /^ko/iu.test(language)
+        ? ["대화 진행", "불러오는 중", "메시지"]
+        : /^zh/iu.test(language)
+          ? /TW|HK|Hant/iu.test(language)
+            ? ["繼續對話", "正在載入", "訊息"]
+            : ["继续对话", "正在加载", "消息"]
+          : ["Advance dialogue", "Loading", "Chat"];
+    dialogue.setAttribute("aria-label", labels[0]!);
     dialogue.hidden =
       !state.talk.enabled || !state.talk.visible || (state.talk.presentation ?? "default") !== "default";
+    portrait.update();
     dialogue.dataset.window = portableWindow(state.talk.window);
     text.style.setProperty("--vega-dialogue-font-scale", String(state.talk.fontScale ?? 1));
     dialogue.style.transform = `translate(${finite(state.talk.shakeX)}px, ${finite(state.talk.shakeY)}px)`;
@@ -493,8 +508,8 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
 
     loading.hidden = !state.loading;
     loadingText.textContent = state.preload.total
-      ? `Loading ${state.preload.done} / ${state.preload.total}`
-      : "Loading";
+      ? `${labels[1]} ${state.preload.done} / ${state.preload.total}`
+      : labels[1]!;
     loadingProgress.value = state.preload.total ? Math.min(1, state.preload.done / state.preload.total) : 0;
     error.hidden = !state.error;
     setText(error, state.error);
@@ -502,7 +517,7 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
     const chatSignature = chatKey(state);
     if (chatSignature !== lastChat) {
       lastChat = chatSignature;
-      renderChat(document, chatTitle, chatMessages, state.chat.title, state.chat.messages);
+      renderChat(document, chatTitle, chatMessages, state.chat.title || labels[2]!, state.chat.messages);
       chat.scrollTop = chat.scrollHeight;
     }
     chat.hidden = !state.chat.visible;
@@ -513,6 +528,7 @@ const mountPortableStoryUi = (host: HTMLElement, context: VegaUiSlotContext): Ve
   return {
     dispose() {
       stop();
+      portrait.dispose();
       richText.dispose();
       releaseStyles();
       delete context.root.dataset.vegaPortableUi;

@@ -11,7 +11,7 @@ const policies = {
     repository: "git+https://github.com/haneoka-gakuen/vega-ui-portable.git",
     peerDependencies: ["@haneoka/vega"],
     runtimeDependencies: ["@haneoka/vega-plugin-richtext"],
-    allowedImports: ["@haneoka/vega/plugin", "@haneoka/vega-plugin-richtext"],
+    allowedImports: ["@haneoka/vega/plugin", "@haneoka/vega/web/ui", "@haneoka/vega-plugin-richtext"],
     forbiddenDependency: /(?:live2d|cubism|motionsync|@esotericsoftware|spine|pixi)/iu,
     externalRuntime: false,
     forbidMedia: true,
